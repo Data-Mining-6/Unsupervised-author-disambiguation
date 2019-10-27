@@ -1,6 +1,8 @@
+import numpy as np
+
 data_file_name = 'data_set_aminar_dblp.v11/dblp_papers_v11.txt'
 #data_file_name = 'data_set_aminar_dblp.v11/sample_of_dblp_papers_v11.txt'
-no_of_sample = 100000
+no_of_sample = 1000
 
 def get_next_word(this_paper):
 	global j
@@ -9,6 +11,11 @@ def get_next_word(this_paper):
 		j = j + 1
 	j = j + 1
 	while j < len(this_paper) and this_paper[j] != '"':
+		if(this_paper[j] == '\\'):
+			j = j + 1
+		if(this_paper[j] == '.') or (this_paper[j] == ','):
+			j = j + 1
+			continue
 		this_word = this_word + this_paper[j]
 		j = j + 1
 	j = j + 1
@@ -45,10 +52,12 @@ class Paper:
 		self.identity = ''
 		self.title = ''
 		self.authors = []
+		self.authors_name_list = []
 		self.venue = Venue()
 		self.year = 0
 		self.keywords = []
 		self.fos = []
+		self.fos_list = []
 		self.references = []
 		self.n_citation = 0
 		self.page_start = ''
@@ -122,7 +131,7 @@ class Collection:
 		input_file = open(data_file_name, "r")
 		for i in range(0, self.collection_size):
 			this_paper = input_file.readline()
-			#print(i)
+			print(i)
 			#print(this_paper + '\n')
 			paper = Paper()
 			j = 0;
@@ -145,11 +154,19 @@ class Collection:
 								temp1 = get_next_word(this_paper)
 								if(temp1 == 'name'):
 									temp.name = get_next_word(this_paper)
+									temp.name = temp.name.lower()
 								elif(temp1 == 'id'):
 									temp.identity = get_next_word(this_paper)
 								elif(temp1 == 'org'):
 									temp.org = get_next_word(this_paper)
-							paper.authors.append(temp)
+							flag = 0
+							for x in paper.authors:
+								if(x.identity == temp.identity):
+									flag = 1
+									break
+							if(flag == 0):
+								paper.authors.append(temp)
+								paper.authors_name_list.append(temp.name)
 					elif(key == 3):
 						while j < len(this_paper) and this_paper[j] != '}':
 							temp = get_next_word(this_paper)
@@ -175,6 +192,7 @@ class Collection:
 								temp1 = get_next_word(this_paper)
 								if(temp1 == 'name'):
 									temp.name = get_next_word(this_paper)
+									temp.name = temp.name.lower()
 								elif(temp1 == 'w'):
 									j = j + 2
 									temp2 = ''
@@ -183,6 +201,8 @@ class Collection:
 										j = j + 1
 									temp.w = float(temp2)
 							paper.fos.append(temp)
+							if temp.name not in paper.fos_list:
+								paper.fos_list.append(temp.name)
 					elif(key == 7):
 						while j < len(this_paper) and this_paper[j] != ']':
 							paper.references.append(get_next_word(this_paper))
@@ -275,4 +295,134 @@ class Collection:
 collection = Collection()
 collection.map_attributes_to_interger()
 collection.read_data()
-#collection.print_data()
+
+name_set = {}
+for i in range(0, len(collection.paper)):
+	for author_name in collection.paper[i].authors:
+		if author_name.name not in name_set:
+			name_set[author_name.name] = [[i]]
+		else:
+			name_set[author_name.name].append([i])
+
+count_a = 0
+for x in name_set:
+	if (len(name_set[x]) > 1):
+		print(x + " " + str(len(name_set[x])))
+		for y in name_set[x]:
+			print(y[0], end = "||")
+		list_of_co_authors = []
+		list_of_fos = []
+		list_of_years = []
+		list_of_references = []
+		print()
+		for y in name_set[x]:
+			for z in collection.paper[y[0]].authors_name_list:
+				if (z != x) and (z not in list_of_co_authors):
+					list_of_co_authors.append(z)
+		for y in name_set[x]:
+			for z in collection.paper[y[0]].fos_list:
+				if(z not in list_of_fos):
+					list_of_fos.append(z)
+		for y in name_set[x]:
+			if collection.paper[y[0]].year not in list_of_years:
+				list_of_years.append(collection.paper[y[0]].year)
+		for y in name_set[x]:
+			for z in collection.paper[y[0]].references:
+				if z not in list_of_references:
+					list_of_references.append(z)
+		print(list_of_co_authors)
+		print(list_of_fos)
+		print(list_of_years)
+		print(list_of_references)
+
+		feature_matrix = []
+		for y in name_set[x]:
+			feature_vector = []
+			for z in list_of_co_authors:
+				if z in collection.paper[y[0]].authors_name_list:
+					feature_vector.append(1)
+				else:
+					feature_vector.append(0)
+			for z in list_of_fos:
+				if z in collection.paper[y[0]].fos_list:
+					feature_vector.append(1)
+				else:
+					feature_vector.append(0)
+			for z in list_of_years:
+				if(z == collection.paper[y[0]].year):
+					feature_vector.append(1)
+				else:
+					feature_vector.append(0)
+			for z in list_of_references:
+				if z in collection.paper[y[0]].references:
+					feature_vector.append(1)
+				else:
+					feature_vector.append(0)
+			feature_matrix.append(feature_vector)
+			#print(feature_vector)
+		feature_np_matrix = np.array(feature_matrix)
+		print(feature_np_matrix)
+
+		#main algo
+		freq = np.sum(feature_np_matrix, axis = 0)
+		x_freq = np.sum(feature_np_matrix, axis = 1)
+		#print(freq)
+		#print(x_freq)
+		p_x_f = feature_np_matrix / freq[None, :]
+		#print(p_x_f)
+		p_f_x = feature_np_matrix / x_freq[:, None]
+		#print(p_f_x)
+		p_x_x = np.matmul(p_x_f, p_f_x.T)
+		#print(p_x_x)
+
+		l = 0.001
+
+		while (len(name_set[x]) > 1):
+			#keep_cluster_id = {}
+			c_sys_matrix = np.zeros((feature_np_matrix.shape[0] ,len(name_set[x])))
+			count = 0;
+			for j in range(0, len(name_set[x])):
+				for k in range(0, len(name_set[x][j])):
+					#keep_cluster_id[count] = j
+					c_sys_matrix[count][j] = 1
+					count = count + 1
+			#print(c_sys_matrix)
+
+			cluster_vector = np.matmul(x_freq.T, c_sys_matrix)
+			print(cluster_vector.shape)
+
+			print(x_freq.shape)
+			p_x_c = np.multiply((np.matmul(x_freq.reshape(len(x_freq ), 1), (1 / cluster_vector).reshape(1, len(cluster_vector)))), c_sys_matrix)
+			#print(p_x_c)
+
+			p_c_c = np.matmul(c_sys_matrix.T, np.matmul(p_x_x, p_x_c))
+			#print(p_c_c)
+
+			merge = []
+			max = 0
+			row_index = 0
+			column_index = 0
+			for m in range(0, p_c_c.shape[0]):
+				for n in range(0, p_c_c.shape[1]):
+					if(m != n):
+						if(max < p_c_c[m][n]):
+							max = p_c_c[m][n]
+							row_index = m
+							column_index = n
+			if(max > l):
+				merge.append([row_index, column_index])
+			if(len(merge) == 0):
+				break
+			else:
+				for y in merge:
+					name_set[x][row_index].extend(name_set[x][column_index])
+					del name_set[x][column_index]
+			print(name_set[x])
+
+		count_a = count_a + len(name_set[x])
+		print(name_set[x])
+		print()
+	else:
+		count_a = count_a + 1
+print(count_a)
+print(name_set)
